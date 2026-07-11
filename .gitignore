@@ -1,0 +1,21 @@
+# Go engine
+go/awt
+go/awt.exe
+go/dist/
+go/coverage.out
+
+# TS SDK
+ts/node_modules/
+ts/dist/
+ts/*.tsbuildinfo
+
+# Local pool root (when root = "./")
+.awt/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

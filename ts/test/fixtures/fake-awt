@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+#
+# fake-awt — a canned stand-in for the real `awt` Go binary, used by the SDK
+# tests. It emits fixed stdout/stderr/exit codes per subcommand and (when
+# FAKE_AWT_LOG is set) appends every invocation's argv to that log file so tests
+# can assert which commands the SDK actually issued.
+#
+set -euo pipefail
+
+log() {
+  if [[ -n "${FAKE_AWT_LOG:-}" ]]; then
+    printf '%s\n' "$*" >>"$FAKE_AWT_LOG"
+  fi
+}
+
+cmd="${1:-}"
+log "$@"
+
+case "$cmd" in
+  --version)
+    echo "awt 0.0.0-fake"
+    ;;
+
+  get)
+    # `get --lease [--lease-holder <label>]`: path to stdout, banner to stderr.
+    echo "fake-awt: leasing worktree 1" >&2
+    echo "/tmp/awt-fake-pool/1"
+    ;;
+
+  status)
+    # `status --json`
+    cat <<'JSON'
+{"poolDir":"/tmp/awt-fake-pool","worktrees":[{"name":"1","path":"/tmp/awt-fake-pool/1","status":"leased","leaseHolder":"agent-a","processes":[]},{"name":"2","path":"/tmp/awt-fake-pool/2","status":"in-use","leaseHolder":"","processes":[{"pid":4242,"name":"bun"}]}]}
+JSON
+    ;;
+
+  enter)
+    # `enter <name> --print-path`
+    echo "/tmp/awt-fake-pool/${2:-1}"
+    ;;
+
+  return)
+    echo "fake-awt: returned worktree" >&2
+    ;;
+
+  prune)
+    # `prune --json ...`
+    cat <<'JSON'
+{"dryRun":false,"candidates":[],"pruned":[{"name":"3","path":"/tmp/awt-fake-pool/3","bytes":1024,"orphaned":false,"warning":""}],"skipped":[],"reclaimableBytes":1024,"freedBytes":1024}
+JSON
+    ;;
+
+  destroy)
+    # `destroy <target> --json ...`
+    #   with --include-leased: destroys the (leased) target, exit 0.
+    #   without it: single named target is skipped for a missing flag -> the
+    #   binary prints valid DestroyJSON but exits NON-ZERO (soft outcome).
+    if [[ "$*" == *"--include-leased"* ]]; then
+      cat <<'JSON'
+{"dryRun":false,"planned":[{"name":"1","path":"/tmp/awt-fake-pool/1","classes":["leased"],"bytes":2048,"detail":"","processes":[]}],"destroyed":[{"name":"1","path":"/tmp/awt-fake-pool/1","classes":["leased"],"bytes":2048,"detail":"","processes":[]}],"skipped":[],"plannedBytes":2048,"freedBytes":2048}
+JSON
+    else
+      cat <<'JSON'
+{"dryRun":true,"planned":[],"destroyed":[],"skipped":[{"name":"1","path":"/tmp/awt-fake-pool/1","classes":["leased"],"neededFlags":["--include-leased"],"leasedBulk":false,"detail":"target is leased"}],"plannedBytes":0,"freedBytes":0}
+JSON
+      exit 1
+    fi
+    ;;
+
+  init)
+    echo "fake-awt: wrote awt.toml" >&2
+    ;;
+
+  *)
+    echo "fake-awt: unknown command: ${cmd}" >&2
+    exit 64
+    ;;
+esac
