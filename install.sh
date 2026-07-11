@@ -2,7 +2,7 @@
 set -e
 
 # Install the latest `awt` release binary.
-#   curl -fsSL https://raw.githubusercontent.com/zottiben/ai-worktree/main/install.sh | sh
+#   curl -fsSL https://zottiben.github.io/ai-worktree/install.sh | sh
 
 REPO="zottiben/ai-worktree"
 BIN="awt"

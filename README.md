@@ -16,13 +16,13 @@ ai-worktree/
 **macOS / Linux:**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/zottiben/ai-worktree/main/install.sh | sh
+curl -fsSL https://zottiben.github.io/ai-worktree/install.sh | sh
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-irm https://raw.githubusercontent.com/zottiben/ai-worktree/main/install.ps1 | iex
+irm https://zottiben.github.io/ai-worktree/install.ps1 | iex
 ```
 
 <details>

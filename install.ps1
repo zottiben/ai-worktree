@@ -1,5 +1,5 @@
 # Install the latest `awt` release binary on Windows.
-#   irm https://raw.githubusercontent.com/zottiben/ai-worktree/main/install.ps1 | iex
+#   irm https://zottiben.github.io/ai-worktree/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
