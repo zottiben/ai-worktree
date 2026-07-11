@@ -13,14 +13,28 @@ ai-worktree/
 
 ## Install
 
-**Binary (`awt`)** — requires Go 1.26+:
+**macOS / Linux:**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/zottiben/ai-worktree/main/install.sh | sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/zottiben/ai-worktree/main/install.ps1 | iex
+```
+
+<details>
+<summary>Build from source (requires Go 1.26+)</summary>
 
 ```sh
 cd go && make build          # builds ./go/awt
 cp go/awt ~/.local/bin/       # or anywhere on your PATH
 ```
+</details>
 
-**SDK** — requires Bun 1.x:
+**SDK** (optional, for driving `awt` from JS/TS) — requires Bun 1.x:
 
 ```sh
 cd ts && bun install
