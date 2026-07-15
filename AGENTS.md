@@ -55,6 +55,12 @@ unpushed work. The implemented, tested guarantees:
 - **Leases and dirty state are protected.** Leased worktrees are never handed out
   by `get`, never pruned, and never bulk-destroyed. Dirty detection includes
   untracked files even when git config hides them.
+- **A machine restart preserves in-use worktrees.** An interactive `awt get`
+  reservation is process-scoped, but the boot time is recorded alongside it so a
+  reboot is told apart from a crash. A crash (same boot session, owner gone)
+  reclaims the worktree; a reboot converts the reservation into a durable lease
+  so the worktree is never reset or handed out and its committed-but-unpushed
+  work survives — resume with `awt enter` or release with `awt return`.
 - **Corrupt state fails safe.** A truncated `awt-state.json` is recovered by
   scanning the pool dir and marking every rebuilt entry leased until a human
   verifies it — never silently reused or deleted.

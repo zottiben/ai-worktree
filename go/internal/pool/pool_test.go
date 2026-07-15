@@ -172,6 +172,92 @@ func TestListReportsLeasedWithHolder(t *testing.T) {
 	}
 }
 
+// orphanOwner rewrites the sole worktree's owner reservation to look like a
+// dead process (a pid whose recorded start time can never match) that was
+// recorded under bootTime, simulating a reservation left behind by a prior run.
+func orphanOwner(t *testing.T, poolDir string, bootTime uint64) {
+	t.Helper()
+	state, err := ReadState(poolDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Worktrees[0].OwnerPID = 999999
+	state.Worktrees[0].OwnerStartedAt = 1
+	state.Worktrees[0].OwnerBootTime = bootTime
+	if err := WriteState(poolDir, state); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRebootPreservesInUseWorktreeAsLease(t *testing.T) {
+	repo := newTestRepo(t)
+	poolDir := newPoolDir(t)
+
+	wt, err := Acquire(repo, poolDir, 4, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The owner reservation was recorded under boot time 1000; the machine has
+	// since rebooted (now 2000) and the owning process is gone.
+	orphanOwner(t, poolDir, 1000)
+	currentBootTime = func() (uint64, bool) { return 2000, true }
+	t.Cleanup(func() { currentBootTime = defaultBootTime })
+
+	list, err := List(poolDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Status != StatusLeased {
+		t.Fatalf("after reboot want one leased worktree, got %+v", list)
+	}
+
+	// A later acquire must not reset or hand out the preserved worktree.
+	wt2, err := Acquire(repo, poolDir, 4, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wt2 == wt {
+		t.Error("a worktree preserved across a reboot must never be reacquired")
+	}
+}
+
+func TestCrashReclaimsInUseWorktree(t *testing.T) {
+	repo := newTestRepo(t)
+	poolDir := newPoolDir(t)
+
+	wt, err := Acquire(repo, poolDir, 4, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Same boot session (1000) but the owning process died: a genuine crash,
+	// so the worktree should be reclaimed, not preserved.
+	orphanOwner(t, poolDir, 1000)
+	currentBootTime = func() (uint64, bool) { return 1000, true }
+	t.Cleanup(func() { currentBootTime = defaultBootTime })
+
+	state := healState(mustReadState(t, poolDir))
+	if state.Worktrees[0].Leased {
+		t.Fatal("a crashed owner must not leave the worktree leased")
+	}
+
+	wt2, err := Acquire(repo, poolDir, 4, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wt2 != wt {
+		t.Errorf("a crash-reclaimed worktree should be reused, got new %s", wt2)
+	}
+}
+
+func mustReadState(t *testing.T, poolDir string) State {
+	t.Helper()
+	state, err := ReadState(poolDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return state
+}
+
 func TestPoolSizeLimitExhausted(t *testing.T) {
 	repo := newTestRepo(t)
 	poolDir := newPoolDir(t)

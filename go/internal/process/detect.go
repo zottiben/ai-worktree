@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/shirou/gopsutil/v4/host"
 	"github.com/shirou/gopsutil/v4/process"
 )
 
@@ -31,6 +32,16 @@ func IsWorktreeInUse(worktreePath string) (bool, error) {
 func Exists(pid int32) bool {
 	exists, err := process.PidExists(pid)
 	return err == nil && exists
+}
+
+// BootTime returns the system boot time in seconds since the epoch. It is used
+// to tell a machine restart apart from a process crash: a reservation whose
+// owner is gone but whose recorded boot time matches the current one died
+// within this boot session (a crash), whereas a mismatch means the machine
+// rebooted while the worktree was in use.
+func BootTime() (uint64, bool) {
+	bt, err := host.BootTime()
+	return bt, err == nil
 }
 
 // StartedAt returns the process creation time (ms since epoch) for pid. The

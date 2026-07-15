@@ -17,6 +17,13 @@ type WorktreeEntry struct {
 	Destroying     bool      `json:"destroying,omitempty"`
 	OwnerPID       int32     `json:"owner_pid,omitempty"`
 	OwnerStartedAt int64     `json:"owner_started_at,omitempty"`
+	// OwnerBootTime records the system boot time (seconds since epoch) when the
+	// owner reservation was taken. It lets healState tell a machine restart
+	// (boot time changed) apart from a process crash (boot time unchanged) so a
+	// worktree that was in use across a reboot is preserved instead of reset. A
+	// missing field decodes to 0, which is treated conservatively as a possible
+	// reboot so pre-upgrade reservations are preserved rather than reclaimed.
+	OwnerBootTime uint64 `json:"owner_boot_time,omitempty"`
 	// Leased marks a worktree as durably reserved by an external consumer that
 	// keeps no live process inside it. Unlike OwnerPID/OwnerStartedAt (which are
 	// process-derived and self-heal when the owner dies), a lease persists until

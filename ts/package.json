@@ -1,6 +1,6 @@
 {
   "name": "@ai-worktree/sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "TypeScript/Bun SDK and CLI wrapper around the `awt` Go binary for managing a pool of reusable git worktrees for parallel AI coding agents.",
   "type": "module",
   "module": "./src/index.ts",

@@ -175,6 +175,7 @@ func markAcquired(wt *WorktreeEntry, opts acquireOptions) error {
 		// A lease is process-independent, so it carries no owner reservation.
 		wt.OwnerPID = 0
 		wt.OwnerStartedAt = 0
+		wt.OwnerBootTime = 0
 		return nil
 	}
 	return reserveOwner(wt)
@@ -220,6 +221,7 @@ func Release(poolDir, worktreePath string) error {
 				}
 				state.Worktrees[i].OwnerPID = 0
 				state.Worktrees[i].OwnerStartedAt = 0
+				state.Worktrees[i].OwnerBootTime = 0
 				clearLease(&state.Worktrees[i])
 				break
 			}
@@ -296,23 +298,61 @@ func FindByPath(poolDir, path string) (*WorktreeEntry, error) {
 	return nil, nil
 }
 
-// healState drops entries whose directory is gone and clears owner reservations
-// whose owning process has died (pid reuse aware). Durable leases are never
-// cleared here.
+// orphanedByRestartHolder labels a worktree whose owner reservation outlived a
+// machine restart. healState converts such a reservation into a durable lease
+// so the worktree (and any committed-but-unpushed work on it) is preserved:
+// resume it with `awt enter <name>` or release it with `awt return <path>`.
+const orphanedByRestartHolder = "orphaned: machine restarted while in use; resume with 'awt enter' or release with 'awt return'"
+
+// defaultBootTime is the production source of the system boot time.
+var defaultBootTime = process.BootTime
+
+// currentBootTime reports the system boot time. It is a variable so tests can
+// simulate a reboot by swapping in a different value.
+var currentBootTime = defaultBootTime
+
+// healState drops entries whose directory is gone and reconciles owner
+// reservations whose owning process has died (pid reuse aware). A reservation
+// that died within the current boot session is a crash and is cleared, freeing
+// the worktree. A reservation that outlived a machine restart is preserved by
+// converting it to a durable lease, so a reboot never silently resets or hands
+// out a worktree that was in use. Durable leases are never cleared here.
 func healState(state State) State {
+	curBoot, bootOK := currentBootTime()
 	var healed []WorktreeEntry
 	for _, wt := range state.Worktrees {
-		if _, err := os.Stat(wt.Path); err == nil {
-			if wt.OwnerPID != 0 && !ownerAlive(wt) {
-				wt.OwnerPID = 0
-				wt.OwnerStartedAt = 0
-				wt.Destroying = false
-			}
-			healed = append(healed, wt)
+		if _, err := os.Stat(wt.Path); err != nil {
+			continue
 		}
+		if wt.OwnerPID != 0 && !ownerAlive(wt) {
+			rebooted := rebootedSince(wt, curBoot, bootOK)
+			wt.OwnerPID = 0
+			wt.OwnerStartedAt = 0
+			wt.OwnerBootTime = 0
+			wt.Destroying = false
+			if rebooted && !wt.Leased {
+				wt.Leased = true
+				wt.LeaseHolder = orphanedByRestartHolder
+				wt.LeasedAt = time.Now()
+			}
+		}
+		healed = append(healed, wt)
 	}
 	state.Worktrees = healed
 	return state
+}
+
+// rebootedSince reports whether the machine has rebooted since this owner
+// reservation was recorded. A reservation with no recorded boot time predates
+// the OwnerBootTime field, or the current boot time is unavailable; either way
+// it is treated conservatively as a possible reboot so the worktree is
+// preserved rather than silently reset (Hard rule #2: destructive ops fail
+// safe).
+func rebootedSince(wt WorktreeEntry, curBoot uint64, bootOK bool) bool {
+	if wt.OwnerBootTime == 0 || !bootOK {
+		return true
+	}
+	return wt.OwnerBootTime != curBoot
 }
 
 func ownerAlive(wt WorktreeEntry) bool {
@@ -331,6 +371,9 @@ func reserveOwner(wt *WorktreeEntry) error {
 	}
 	wt.OwnerPID = pid
 	wt.OwnerStartedAt = startedAt
+	if bootTime, ok := currentBootTime(); ok {
+		wt.OwnerBootTime = bootTime
+	}
 	return nil
 }
 
