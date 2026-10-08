@@ -27,16 +27,19 @@ var (
 )
 
 var destroyCmd = &cobra.Command{
-	Use:   "destroy <path> [--all]",
+	Use:   "destroy <name|path> [--all]",
 	Short: "Remove worktrees from the pool, safely by default",
 	Long: `Remove worktrees from the pool. Destroy is the deliberate tool for removing a
 worktree even though it still has unlanded work, but it is safe by default.
 
 Targets are narrow and explicit:
 
-  awt destroy <worktree-path>        Target exactly one worktree.
+  awt destroy <name>                 Target one worktree in the current repo's pool.
+  awt destroy <worktree-path>        Target exactly one worktree by path.
   awt destroy <pool-path> --all      Target all worktrees in THAT pool.
 
+Names are those shown by 'awt status', e.g. 'awt destroy 5'. Existing relative
+paths are treated as paths, not names; use ./path to explicitly name a path.
 There is no cross-pool or global destroy; --all without a pool path is an error.
 
 Destroy is a dry run by default: it prints a risk-revealing preview and removes
@@ -50,12 +53,13 @@ Each risky class is opt-in:
                        (DATA LOSS).
   --include-in-use     Also remove worktrees with a running process or owner
                        reservation (processes terminated cleanly first).
-  --include-leased     Also remove a leased worktree. Honored only when the exact
-                       worktree path is named; leased worktrees are NEVER removed
-                       by --all.
+  --include-leased     Also remove a leased worktree. Honored only for a single
+                       worktree named by name or path; leased worktrees are NEVER
+                       removed by --all.
 
 Single-target skips for missing flags exit non-zero so scripts notice. Bulk
 --all skips are normal and exit zero.`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: destroyRunE,
 }
 
@@ -64,14 +68,14 @@ func init() {
 	destroyCmd.Flags().BoolVar(&destroyYes, "yes", false, "Execute the removal instead of doing a dry run")
 	destroyCmd.Flags().BoolVar(&destroyIncludeUnlanded, "include-unlanded", false, "Also remove dirty, unmerged, or unverified worktrees (irreversible data loss)")
 	destroyCmd.Flags().BoolVar(&destroyIncludeInUse, "include-in-use", false, "Also remove worktrees with a running process or owner reservation (processes terminated cleanly first)")
-	destroyCmd.Flags().BoolVar(&destroyIncludeLeased, "include-leased", false, "Also remove a leased worktree; only when the exact path is named, never via --all")
+	destroyCmd.Flags().BoolVar(&destroyIncludeLeased, "include-leased", false, "Also remove a leased worktree; only for a single name or path, never via --all")
 	destroyCmd.Flags().BoolVar(&destroyJSON, "json", false, "Emit machine-readable JSON to stdout")
 	rootCmd.AddCommand(destroyCmd)
 }
 
 func destroyRunE(cmd *cobra.Command, args []string) error {
 	if destroyIncludeLeased && destroyAll {
-		return errors.New("--include-leased cannot be combined with --all; name the exact worktree path instead (leased worktrees are never removed in bulk)")
+		return errors.New("--include-leased cannot be combined with --all; specify a single worktree name or path instead (leased worktrees are never removed in bulk)")
 	}
 
 	preDestroy, err := destroyPreDestroyHooks()
@@ -107,14 +111,10 @@ func destroyRunE(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(args) == 0 {
-		return errors.New("specify a worktree path to destroy, or a pool path with --all")
+		return errors.New("specify a worktree name or path to destroy, or a pool path with --all")
 	}
 
-	wtPath, err := filepath.Abs(args[0])
-	if err != nil {
-		return err
-	}
-	poolDir, err := resolveDestroyPoolFromWorktree(wtPath)
+	poolDir, wtPath, err := resolveDestroyWorktree(args[0])
 	if err != nil {
 		return err
 	}
@@ -141,6 +141,60 @@ func destroyPreDestroyHooks() ([]string, error) {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 	return cfg.Hooks.PreDestroy, nil
+}
+
+// resolveDestroyWorktree accepts a worktree name or an exact worktree path. Only a
+// bare, nonexistent path can be a name: a typo in an explicit path or an existing
+// local directory must never silently select a different worktree by name.
+func resolveDestroyWorktree(target string) (string, string, error) {
+	wtPath, err := filepath.Abs(target)
+	if err != nil {
+		return "", "", err
+	}
+	if target != "." && target != ".." && filepath.Base(target) == target && filepath.VolumeName(target) == "" {
+		if _, err := os.Lstat(wtPath); os.IsNotExist(err) {
+			return resolveDestroyWorktreeByName(target)
+		} else if err != nil {
+			return "", "", err
+		}
+	}
+	poolDir, err := resolveDestroyPoolFromWorktree(wtPath)
+	return poolDir, wtPath, err
+}
+
+func resolveDestroyWorktreeByName(name string) (string, string, error) {
+	// Resolve through the owning checkout: relative config roots and the pool
+	// hash of a local-only repository must not change inside a linked worktree.
+	repoRoot, err := git.FindMainRepoRootFrom(".")
+	if err != nil {
+		return "", "", fmt.Errorf("cannot resolve worktree name %q outside a git repository; specify a worktree path", name)
+	}
+	cfg, err := config.Load(repoRoot)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to load config: %w", err)
+	}
+	poolDir, err := config.ResolvePoolDir(repoRoot, cfg.Root)
+	if err != nil {
+		return "", "", err
+	}
+	state, err := pool.ReadState(poolDir)
+	if err != nil {
+		return "", "", err
+	}
+	var wtPath string
+	for _, wt := range state.Worktrees {
+		if wt.Name != name {
+			continue
+		}
+		if wtPath != "" {
+			return "", "", fmt.Errorf("more than one worktree named %q in pool %s; specify the exact worktree path", name, poolDir)
+		}
+		wtPath = wt.Path
+	}
+	if wtPath == "" {
+		return "", "", fmt.Errorf("no worktree named %q in pool %s; run 'awt status' for details", name, poolDir)
+	}
+	return poolDir, wtPath, nil
 }
 
 // resolveDestroyPoolFromWorktree resolves the managed pool that owns a single

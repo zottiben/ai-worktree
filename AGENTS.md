@@ -42,16 +42,20 @@ This tool's whole job is creating and tearing down git worktrees. Those operatio
 (`worktree remove --force`, hard reset, clean) can silently lose uncommitted or
 unpushed work. The implemented, tested guarantees:
 
-- **Explicit targets only.** `destroy <path>` acts on one named worktree; `destroy
-  <pool> --all` acts on that pool only. There is NO cross-pool/global destroy;
-  `--all` without a pool path is an error. Never act on a sibling or the primary
-  checkout by inference.
+- **Explicit targets only.** `destroy <name|path>` acts on one named worktree;
+  bare names resolve only within the current repository's pool, using the owning
+  checkout's config even inside a linked worktree. Existing relative paths and
+  explicit paths never fall back to name lookup, avoiding accidental deletion of
+  a different target (covered in `go/cmd/destroy_test.go`). `destroy <pool> --all`
+  acts on that pool only. There is NO cross-pool/global destroy; `--all` without
+  a pool path is an error. Never act on a sibling or the primary checkout by
+  inference.
 - **Dry-run by default.** `prune` and `destroy` preview and remove nothing unless
   `--yes` is passed.
 - **Per-risk opt-in.** A bare `destroy --yes` removes only the disposable set
   (merged, clean, idle, unleased). Each risky class is its own flag:
   `--include-unlanded` (dirty/unmerged/unverified), `--include-in-use` (running
-  process), `--include-leased` (leased — single named path only, NEVER via `--all`).
+  process), `--include-leased` (leased — single name or path only, NEVER via `--all`).
 - **Leases and dirty state are protected.** Leased worktrees are never handed out
   by `get`, never pruned, and never bulk-destroyed. Dirty detection includes
   untracked files even when git config hides them.

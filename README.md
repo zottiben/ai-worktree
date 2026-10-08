@@ -69,13 +69,18 @@ exit                          # worktree is cleaned and returned to the pool
 | `awt status` | Show the pool (add `--json` for machine-readable output) |
 | `awt return [path]` | Release, clean, and return a worktree to the pool |
 | `awt prune` | Remove stale idle worktrees (dry run; `--yes` to delete) |
-| `awt destroy <path>` | Remove a worktree (dry run; `--yes` to delete) |
+| `awt destroy <name-or-path>` | Remove a worktree by name or path (dry run; `--yes` to delete) |
 | `awt init` | Create an `awt.toml` |
 | `awt update` | Update to the latest release |
 
 `prune` and `destroy` are dry-run by default and only remove worktrees that are
 idle, clean, and merged. Removing anything riskier (dirty, unmerged, in-use, or
 leased) requires an explicit `--include-*` flag — run either command to see which.
+
+`awt destroy 5` selects worktree `5` from the current repository's pool, including
+when run inside a linked worktree. An existing relative path is treated as a
+path, not a name; use `./path` to force path lookup. Bulk destruction still
+requires a pool path: `awt destroy <pool-path> --all`.
 
 ### SDK
 
