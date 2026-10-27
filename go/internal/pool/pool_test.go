@@ -157,7 +157,7 @@ func TestListReportsLeasedWithHolder(t *testing.T) {
 	if _, err := AcquireLease(repo, poolDir, 4, nil, "holder-y"); err != nil {
 		t.Fatal(err)
 	}
-	list, err := List(poolDir)
+	list, err := List(repo, poolDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestRebootPreservesInUseWorktreeAsLease(t *testing.T) {
 	currentBootTime = func() (uint64, bool) { return 2000, true }
 	t.Cleanup(func() { currentBootTime = defaultBootTime })
 
-	list, err := List(poolDir)
+	list, err := List(repo, poolDir)
 	if err != nil {
 		t.Fatal(err)
 	}

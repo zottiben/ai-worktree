@@ -25,7 +25,7 @@ without cloning, conflicts, or coordination overhead.
 **Commands** (from repo root)
 - Build: `make build` (both) · `make -C go build` · `cd ts && bun run build`
 - Lint: `make lint` (`gofmt -l` + `go vet` + `tsc --noEmit`)
-- Test: `make test` (Go tests + `bun test`; the ts tests run against the built `go/awt`)
+- Test: `make test` (Go tests + `bun test`; Go CLI regression tests build `awt`, TS tests use a fake binary)
 - Run (dev): `cd go && make build && ./awt`
 - Requires **Go 1.26+** and **Bun 1.x**.
 
@@ -65,6 +65,13 @@ unpushed work. The implemented, tested guarantees:
   reclaims the worktree; a reboot converts the reservation into a durable lease
   so the worktree is never reset or handed out and its committed-but-unpushed
   work survives — resume with `awt enter` or release with `awt return`.
+- **Git registrations reserve their paths.** `status` and `get` reconcile the
+  current pool with Git's registered worktrees, including named slots. Unknown
+  entries are recovered as leased. Missing checkouts remain visible and keep
+  their leases, but do not consume `max_trees` capacity. Acquisition skips their
+  paths without pruning or force-overwriting registrations, preserving detached
+  commits for recovery (covered in `go/cmd/worktree_registry_test.go` and
+  `go/internal/pool/reconcile_test.go`).
 - **Corrupt state fails safe.** A truncated `awt-state.json` is recovered by
   scanning the pool dir and marking every rebuilt entry leased until a human
   verifies it — never silently reused or deleted.

@@ -19,6 +19,7 @@ const (
 	StatusDirty     = "dirty"
 	StatusInUse     = "in-use"
 	StatusLeased    = "leased"
+	StatusMissing   = "missing"
 	StatusHere      = "you're here"
 )
 
@@ -91,19 +92,31 @@ func acquire(repoRoot, poolDir string, poolSize int, postCreate []string, opts a
 			return err
 		}
 
-		state = healState(state)
+		state, err = reconcileState(repoRoot, poolDir, state)
+		if err != nil {
+			return err
+		}
+		if err := WriteState(poolDir, state); err != nil {
+			return err
+		}
 
-		// Try to find an available worktree (clean, not in-use, not leased)
+		present := 0
 		for i, wt := range state.Worktrees {
+			if _, err := os.Stat(filepath.Join(wt.Path, ".git")); os.IsNotExist(err) {
+				continue
+			} else if err != nil {
+				return err
+			}
+			present++
 			if wt.Destroying || wt.Leased || ownerAlive(wt) {
 				continue
 			}
-			inUse, _ := process.IsWorktreeInUse(wt.Path)
-			if inUse {
+			inUse, err := process.IsWorktreeInUse(wt.Path)
+			if err != nil || inUse {
 				continue
 			}
-			dirty, _ := git.IsDirty(wt.Path)
-			if dirty {
+			dirty, err := git.IsDirty(wt.Path)
+			if err != nil || dirty {
 				continue
 			}
 			// Found an available one — reset it
@@ -122,8 +135,8 @@ func acquire(repoRoot, poolDir string, poolSize int, postCreate []string, opts a
 		}
 
 		// No available worktree — create new if pool allows
-		if len(state.Worktrees) >= poolSize {
-			return fmt.Errorf("all %d worktrees are in use or dirty (max_trees = %d). Run 'awt status' to see details, or increase max_trees in awt.toml", len(state.Worktrees), poolSize)
+		if present >= poolSize {
+			return fmt.Errorf("all %d worktrees are in use or dirty (max_trees = %d). Run 'awt status' to see details, or increase max_trees in awt.toml", present, poolSize)
 		}
 
 		name := nextName(state)
@@ -231,8 +244,7 @@ func Release(poolDir, worktreePath string) error {
 }
 
 // List returns the current status of managed worktrees in poolDir.
-// Leased worktrees are reported with StatusLeased and their optional holder.
-func List(poolDir string) ([]WorktreeStatus, error) {
+func List(repoRoot, poolDir string) ([]WorktreeStatus, error) {
 	var result []WorktreeStatus
 
 	err := WithStateLock(poolDir, func() error {
@@ -241,7 +253,10 @@ func List(poolDir string) ([]WorktreeStatus, error) {
 			return err
 		}
 
-		state = healState(state)
+		state, err = reconcileState(repoRoot, poolDir, state)
+		if err != nil {
+			return err
+		}
 		if err := WriteState(poolDir, state); err != nil {
 			return err
 		}
@@ -253,9 +268,17 @@ func List(poolDir string) ([]WorktreeStatus, error) {
 				continue
 			}
 			ws := WorktreeStatus{
-				Name:   wt.Name,
-				Path:   wt.Path,
-				Status: StatusAvailable,
+				Name:        wt.Name,
+				Path:        wt.Path,
+				Status:      StatusAvailable,
+				LeaseHolder: wt.LeaseHolder,
+			}
+			if _, err := os.Stat(filepath.Join(wt.Path, ".git")); os.IsNotExist(err) {
+				ws.Status = StatusMissing
+				result = append(result, ws)
+				continue
+			} else if err != nil {
+				return err
 			}
 
 			procs, _ := process.FindProcessesInWorktree(wt.Path)
@@ -263,7 +286,6 @@ func List(poolDir string) ([]WorktreeStatus, error) {
 
 			if wt.Leased {
 				ws.Status = StatusLeased
-				ws.LeaseHolder = wt.LeaseHolder
 			} else if ownerAlive(wt) {
 				ws.Status = StatusInUse
 			} else if len(procs) > 0 {
@@ -311,8 +333,8 @@ var defaultBootTime = process.BootTime
 // simulate a reboot by swapping in a different value.
 var currentBootTime = defaultBootTime
 
-// healState drops entries whose directory is gone and reconciles owner
-// reservations whose owning process has died (pid reuse aware). A reservation
+// healState reconciles owner reservations whose owning process has died
+// (pid reuse aware). A reservation
 // that died within the current boot session is a crash and is cleared, freeing
 // the worktree. A reservation that outlived a machine restart is preserved by
 // converting it to a durable lease, so a reboot never silently resets or hands
@@ -321,9 +343,6 @@ func healState(state State) State {
 	curBoot, bootOK := currentBootTime()
 	var healed []WorktreeEntry
 	for _, wt := range state.Worktrees {
-		if _, err := os.Stat(wt.Path); err != nil {
-			continue
-		}
 		if wt.OwnerPID != 0 && !ownerAlive(wt) {
 			rebooted := rebootedSince(wt, curBoot, bootOK)
 			wt.OwnerPID = 0

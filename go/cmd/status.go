@@ -35,7 +35,7 @@ var statusCmd = &cobra.Command{
 			return err
 		}
 
-		worktrees, err := pool.List(poolDir)
+		worktrees, err := pool.List(repoRoot, poolDir)
 		if err != nil {
 			return err
 		}
@@ -65,7 +65,7 @@ var statusCmd = &cobra.Command{
 				status = green(wt.Status)
 			case pool.StatusInUse:
 				status = red(wt.Status)
-			case pool.StatusDirty:
+			case pool.StatusDirty, pool.StatusMissing:
 				status = yellow(wt.Status)
 			case pool.StatusLeased:
 				status = magenta(wt.Status)
@@ -76,7 +76,7 @@ var statusCmd = &cobra.Command{
 			// "%-4s  %-11s  " = 4 + 2 + 11 + 2 = 19 chars before path
 			statusPad := strings.Repeat(" ", statusWidth-len(wt.Status))
 			line := fmt.Sprintf("%-4s  %s%s  %s", wt.Name, status, statusPad, ui.PrettyPath(wt.Path))
-			if wt.Status == pool.StatusLeased && wt.LeaseHolder != "" {
+			if wt.LeaseHolder != "" {
 				line += fmt.Sprintf("  (held by %s)", wt.LeaseHolder)
 			}
 			fmt.Fprintln(os.Stdout, line)

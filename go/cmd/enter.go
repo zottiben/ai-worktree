@@ -57,7 +57,7 @@ func enterRunE(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to resolve pool directory: %w", err)
 	}
 
-	worktrees, err := pool.List(poolDir)
+	worktrees, err := pool.List(repoRoot, poolDir)
 	if err != nil {
 		return err
 	}
@@ -78,6 +78,10 @@ func enterRunE(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("no worktree named %q: the pool is empty. Run 'awt get' to create one", name)
 		}
 		return fmt.Errorf("no worktree named %q in pool (available: %s). Run 'awt status' for details", name, strings.Join(names, ", "))
+	}
+
+	if target.Status == pool.StatusMissing {
+		return fmt.Errorf("worktree %s is missing from disk: %s", target.Name, target.Path)
 	}
 
 	if enterPrintPath {

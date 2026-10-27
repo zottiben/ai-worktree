@@ -82,6 +82,13 @@ when run inside a linked worktree. An existing relative path is treated as a
 path, not a name; use `./path` to force path lookup. Bulk destruction still
 requires a pool path: `awt destroy <pool-path> --all`.
 
+`awt status` and `awt get` reconcile pool state with Git's registered worktrees
+inside that pool. A missing checkout is shown as `missing`; its path is not reused
+and it does not count towards `max_trees`. Git registrations are left intact to
+preserve recovery information. Worktrees absent from pool state are recovered as
+leased, including named slots. Verify them before using `awt return` to reset and
+release them. Existing leases stay protected if a missing checkout returns.
+
 ### SDK
 
 Lease a worktree, run your agent in it, and always return it afterwards:

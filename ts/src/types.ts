@@ -21,6 +21,7 @@ export type WorktreeState =
   | "in-use"
   | "dirty"
   | "leased"
+  | "missing"
   | "you're here";
 
 /** One worktree slot, as reported by `awt status --json`. */

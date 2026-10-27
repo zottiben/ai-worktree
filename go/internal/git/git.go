@@ -151,6 +151,23 @@ func AddWorktree(repoRoot, path, branch string) error {
 	return err
 }
 
+func ListLinkedWorktreePaths(repoRoot string) ([]string, error) {
+	out, err := runGit(repoRoot, "worktree", "list", "--porcelain", "-z")
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, field := range strings.Split(out, "\x00") {
+		if path, ok := strings.CutPrefix(field, "worktree "); ok {
+			paths = append(paths, path)
+		}
+	}
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("git worktree list returned no primary checkout")
+	}
+	return paths[1:], nil
+}
+
 // RemoveWorktree force-removes a git worktree registration, discarding any
 // changes in it.
 func RemoveWorktree(repoRoot, path string) error {
