@@ -69,6 +69,7 @@ exit                          # worktree is cleaned and returned to the pool
 | `awt status` | Show the pool (add `--json` for machine-readable output) |
 | `awt return [path]` | Release, clean, and return a worktree to the pool |
 | `awt prune` | Remove stale idle worktrees (dry run; `--yes` to delete) |
+| `awt prune --missing` | Clean missing checkout registrations in this pool (dry run; `--yes` to apply) |
 | `awt destroy <name-or-path>` | Remove a worktree by name or path (dry run; `--yes` to delete) |
 | `awt init` | Create an `awt.toml` |
 | `awt update` | Update to the latest release |
@@ -88,6 +89,22 @@ and it does not count towards `max_trees`. Git registrations are left intact to
 preserve recovery information. Worktrees absent from pool state are recovered as
 leased, including named slots. Verify them before using `awt return` to reset and
 release them. Existing leases stay protected if a missing checkout returns.
+
+For directories already deleted from disk:
+
+```sh
+awt prune --missing          # preview missing registrations and stale state entries
+awt prune --missing --yes    # apply the cleanup
+```
+
+This mode only affects the current repository's pool. It saves each registered
+HEAD under `refs/awt/recovered/<commit>` before removing the Git registration and
+pool entry. Those commits remain available after Git garbage collection; inspect
+one with `git show refs/awt/recovered/<commit>`, or create a branch from that ref.
+Deleted working files are not restored. Automatic recovery holds can be cleared,
+but explicit leases, Git locks, running owners, and paths that still exist are
+protected. No checkout files are deleted and no lifecycle hooks run. This mode
+cannot be combined with `--all`, `--global`, or `--prune-orphans`.
 
 ### SDK
 

@@ -549,6 +549,10 @@ func analyzePruneCandidate(resolveContext pruneContextResolver, wt WorktreeEntry
 	worktree := PruneWorktree{Name: wt.Name, Path: wt.Path}
 	skipped := PruneSkipped{Name: wt.Name, Path: wt.Path}
 
+	if _, err := os.Lstat(wt.Path); os.IsNotExist(err) {
+		skipped = newPruneSkipped(wt.Name, wt.Path, PruneSkipMissing, "preview cleanup with 'awt prune --missing'", "")
+		return worktree, skipped, true, pruneContext{}, nil
+	}
 	if wt.Destroying || wt.Leased || ownerAlive(wt) {
 		return worktree, skipped, false, pruneContext{}, nil
 	}

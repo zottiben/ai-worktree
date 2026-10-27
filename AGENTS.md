@@ -57,7 +57,7 @@ unpushed work. The implemented, tested guarantees:
   `--include-unlanded` (dirty/unmerged/unverified), `--include-in-use` (running
   process), `--include-leased` (leased — single name or path only, NEVER via `--all`).
 - **Leases and dirty state are protected.** Leased worktrees are never handed out
-  by `get`, never pruned, and never bulk-destroyed. Dirty detection includes
+  by `get`, never removed by normal prune, and never bulk-destroyed. Dirty detection includes
   untracked files even when git config hides them.
 - **A machine restart preserves in-use worktrees.** An interactive `awt get`
   reservation is process-scoped, but the boot time is recorded alongside it so a
@@ -72,6 +72,14 @@ unpushed work. The implemented, tested guarantees:
   paths without pruning or force-overwriting registrations, preserving detached
   commits for recovery (covered in `go/cmd/worktree_registry_test.go` and
   `go/internal/pool/reconcile_test.go`).
+- **Missing cleanup is metadata-only and opt-in.** `prune --missing` previews
+  only the current repository's pool; `--yes` applies it. It clears automatic
+  recovery holds only on absent checkout paths, never explicit leases, active
+  owners or Git locks. Registered HEAD commits are pinned under
+  `refs/awt/recovered/` before targeted, non-force Git removal. Existing paths
+  (including broken symlinks) and other pools are untouched, and hooks do not
+  run. Tests cover this in `go/cmd/prune_missing_test.go`,
+  `go/internal/pool/prune_missing_test.go` and `go/internal/git/missing_test.go`.
 - **Corrupt state fails safe.** A truncated `awt-state.json` is recovered by
   scanning the pool dir and marking every rebuilt entry leased until a human
   verifies it — never silently reused or deleted.

@@ -175,6 +175,7 @@ export interface PruneOptions {
   all?: boolean;
   /** Also prune orphaned/dangling worktree entries. */
   pruneOrphans?: boolean;
+  missing?: boolean;
 }
 
 /** Options for {@link AwtClient.destroy}. */

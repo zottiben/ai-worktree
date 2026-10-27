@@ -71,6 +71,13 @@ describe("AwtClient basic commands", () => {
     expect(readLog()[0]).toBe("return /tmp/awt-fake-pool/1 --force");
   });
 
+  test("prune({ missing }) forwards metadata-only cleanup", async () => {
+    await makeClient().prune({ missing: true });
+    expect(readLog()[0]).toBe("prune --json --missing");
+    await makeClient().prune({ missing: true, yes: true });
+    expect(readLog()[1]).toBe("prune --json --yes --missing");
+  });
+
   test("prune() parses the PruneJSON payload", async () => {
     const result = await makeClient().prune({ yes: true });
     expect(result.pruned).toHaveLength(1);

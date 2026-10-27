@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestListLinkedWorktreePaths(t *testing.T) {
+func TestListLinkedWorktrees(t *testing.T) {
 	repo := newRepo(t)
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -28,12 +28,19 @@ func TestListLinkedWorktreePaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, cwd := range []string{repo, paths[0]} {
-		got, err := ListLinkedWorktreePaths(cwd)
+		got, err := ListLinkedWorktrees(cwd)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(got, paths) {
-			t.Fatalf("want linked paths %q, got %q", paths, got)
+		var gotPaths []string
+		for _, wt := range got {
+			gotPaths = append(gotPaths, wt.Path)
+		}
+		if !reflect.DeepEqual(gotPaths, paths) {
+			t.Fatalf("want linked paths %q, got %q", paths, gotPaths)
+		}
+		if got[0].Head == "" || got[0].Locked || !got[1].Locked {
+			t.Fatalf("incorrect registration metadata: %+v", got)
 		}
 	}
 }

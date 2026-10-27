@@ -9,6 +9,12 @@ import (
 	"time"
 )
 
+const (
+	leaseSourceExplicit = "explicit"
+	leaseSourceRecovery = "recovery"
+	leaseSourceRestart  = "restart"
+)
+
 // WorktreeEntry is one managed worktree in the pool's persistent state.
 type WorktreeEntry struct {
 	Name           string    `json:"name"`
@@ -29,7 +35,8 @@ type WorktreeEntry struct {
 	// process-derived and self-heal when the owner dies), a lease persists until
 	// it is explicitly released by `awt return`. A missing field decodes to
 	// false, so pre-lease state files keep today's behavior.
-	Leased bool `json:"leased,omitempty"`
+	Leased      bool   `json:"leased,omitempty"`
+	LeaseSource string `json:"lease_source,omitempty"`
 	// LeaseHolder is an optional human-readable label for who holds the lease.
 	LeaseHolder string `json:"lease_holder,omitempty"`
 	// LeasedAt records when the lease was taken.
@@ -85,6 +92,16 @@ func ReadState(poolDir string) (State, error) {
 // so callers (status output, destroy) can explain why it is unexpectedly leased.
 const recoveredLeaseHolder = "recovered: state file was corrupt or truncated; verify before reuse"
 
+func recoveryLease(wt WorktreeEntry) bool {
+	if !wt.Leased {
+		return false
+	}
+	if wt.LeaseSource != "" {
+		return wt.LeaseSource == leaseSourceRecovery
+	}
+	return wt.LeaseHolder == unrecordedLeaseHolder || wt.LeaseHolder == recoveredLeaseHolder
+}
+
 // recoverCorruptState rebuilds a State from the worktree directories that exist
 // under poolDir when the on-disk state file could not be parsed. The original
 // state - including who owned or leased each worktree - is gone, so on-disk
@@ -127,6 +144,7 @@ func recoverCorruptState(poolDir string, parseErr error) (State, error) {
 				CreatedAt:   now,
 				Leased:      true,
 				LeaseHolder: recoveredLeaseHolder,
+				LeaseSource: leaseSourceRecovery,
 				LeasedAt:    now,
 			})
 		}

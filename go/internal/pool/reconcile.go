@@ -12,7 +12,7 @@ import (
 const unrecordedLeaseHolder = "recovered: registered with Git but absent from pool state; verify before reuse"
 
 func reconcileState(repoRoot, poolDir string, state State) (State, error) {
-	paths, err := git.ListLinkedWorktreePaths(repoRoot)
+	worktrees, err := git.ListLinkedWorktrees(repoRoot)
 	if err != nil {
 		return State{}, fmt.Errorf("read registered worktrees: %w", err)
 	}
@@ -28,8 +28,8 @@ func reconcileState(repoRoot, poolDir string, state State) (State, error) {
 		}
 		known[path] = true
 	}
-	for _, path := range paths {
-		resolved, err := resolvePath(path)
+	for _, wt := range worktrees {
+		resolved, err := resolvePath(wt.Path)
 		if err != nil {
 			return State{}, err
 		}
@@ -44,6 +44,7 @@ func reconcileState(repoRoot, poolDir string, state State) (State, error) {
 			CreatedAt:   now,
 			Leased:      true,
 			LeaseHolder: unrecordedLeaseHolder,
+			LeaseSource: leaseSourceRecovery,
 			LeasedAt:    now,
 		})
 		known[resolved] = true

@@ -151,21 +151,46 @@ func AddWorktree(repoRoot, path, branch string) error {
 	return err
 }
 
-func ListLinkedWorktreePaths(repoRoot string) ([]string, error) {
+type RegisteredWorktree struct {
+	Path     string
+	Head     string
+	Locked   bool
+	Prunable bool
+}
+
+func (wt RegisteredWorktree) RecoveryRef() string {
+	return "refs/awt/recovered/" + wt.Head
+}
+
+func ListLinkedWorktrees(repoRoot string) ([]RegisteredWorktree, error) {
 	out, err := runGit(repoRoot, "worktree", "list", "--porcelain", "-z")
 	if err != nil {
 		return nil, err
 	}
-	var paths []string
-	for _, field := range strings.Split(out, "\x00") {
-		if path, ok := strings.CutPrefix(field, "worktree "); ok {
-			paths = append(paths, path)
+	var worktrees []RegisteredWorktree
+	for _, record := range strings.Split(out, "\x00\x00") {
+		var wt RegisteredWorktree
+		for _, field := range strings.Split(record, "\x00") {
+			key, value, _ := strings.Cut(field, " ")
+			switch key {
+			case "worktree":
+				wt.Path = value
+			case "HEAD":
+				wt.Head = value
+			case "locked":
+				wt.Locked = true
+			case "prunable":
+				wt.Prunable = true
+			}
+		}
+		if wt.Path != "" {
+			worktrees = append(worktrees, wt)
 		}
 	}
-	if len(paths) == 0 {
+	if len(worktrees) == 0 {
 		return nil, fmt.Errorf("git worktree list returned no primary checkout")
 	}
-	return paths[1:], nil
+	return worktrees[1:], nil
 }
 
 // RemoveWorktree force-removes a git worktree registration, discarding any

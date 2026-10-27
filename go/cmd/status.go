@@ -20,7 +20,7 @@ var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show the status of all worktrees in the pool",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		repoRoot, err := git.FindRepoRoot()
+		repoRoot, err := git.FindMainRepoRootFrom(".")
 		if err != nil {
 			return fmt.Errorf("not in a git repository: %w", err)
 		}
@@ -57,6 +57,12 @@ var statusCmd = &cobra.Command{
 
 		// statusWidth must be >= longest status string ("you're here" = 11)
 		const statusWidth = 11
+		nameWidth := 4
+		missing := false
+		for _, wt := range worktrees {
+			nameWidth = max(nameWidth, len(wt.Name))
+			missing = missing || wt.Status == pool.StatusMissing
+		}
 
 		for _, wt := range worktrees {
 			var status string
@@ -73,10 +79,11 @@ var statusCmd = &cobra.Command{
 				status = cyan(wt.Status)
 			}
 
-			// "%-4s  %-11s  " = 4 + 2 + 11 + 2 = 19 chars before path
 			statusPad := strings.Repeat(" ", statusWidth-len(wt.Status))
-			line := fmt.Sprintf("%-4s  %s%s  %s", wt.Name, status, statusPad, ui.PrettyPath(wt.Path))
-			if wt.LeaseHolder != "" {
+			line := fmt.Sprintf("%-*s  %s%s  %s", nameWidth, wt.Name, status, statusPad, ui.PrettyPath(wt.Path))
+			if wt.Recovered && wt.Status == pool.StatusMissing {
+				line += "  (recovered)"
+			} else if wt.LeaseHolder != "" {
 				line += fmt.Sprintf("  (held by %s)", wt.LeaseHolder)
 			}
 			fmt.Fprintln(os.Stdout, line)
@@ -86,8 +93,11 @@ var statusCmd = &cobra.Command{
 				for _, p := range wt.Processes {
 					procStrs = append(procStrs, p.String())
 				}
-				fmt.Fprintf(os.Stdout, "%s%s\n", strings.Repeat(" ", 4+2+statusWidth+2), strings.Join(procStrs, ", "))
+				fmt.Fprintf(os.Stdout, "%s%s\n", strings.Repeat(" ", nameWidth+2+statusWidth+2), strings.Join(procStrs, ", "))
 			}
+		}
+		if missing {
+			fmt.Fprintln(os.Stdout, "🌳 Preview missing checkout cleanup with 'awt prune --missing'.")
 		}
 		return nil
 	},

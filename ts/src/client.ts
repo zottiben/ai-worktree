@@ -147,6 +147,7 @@ export class AwtClient {
     if (options.yes) args.push("--yes");
     if (options.all) args.push("--all");
     if (options.pruneOrphans) args.push("--prune-orphans");
+    if (options.missing) args.push("--missing");
     const stdout = await this.#run(args);
     return JSON.parse(stdout) as PruneResult;
   }

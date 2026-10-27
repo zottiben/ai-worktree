@@ -31,6 +31,7 @@ type WorktreeStatus struct {
 	Processes []process.ProcessInfo
 	// LeaseHolder is the recorded holder for a leased worktree, if any.
 	LeaseHolder string
+	Recovered   bool
 }
 
 // acquireOptions controls how Acquire reserves the worktree it hands out.
@@ -183,6 +184,7 @@ func acquire(repoRoot, poolDir string, poolSize int, postCreate []string, opts a
 func markAcquired(wt *WorktreeEntry, opts acquireOptions) error {
 	if opts.lease {
 		wt.Leased = true
+		wt.LeaseSource = leaseSourceExplicit
 		wt.LeaseHolder = opts.leaseHolder
 		wt.LeasedAt = time.Now()
 		// A lease is process-independent, so it carries no owner reservation.
@@ -272,6 +274,7 @@ func List(repoRoot, poolDir string) ([]WorktreeStatus, error) {
 				Path:        wt.Path,
 				Status:      StatusAvailable,
 				LeaseHolder: wt.LeaseHolder,
+				Recovered:   recoveryLease(wt),
 			}
 			if _, err := os.Stat(filepath.Join(wt.Path, ".git")); os.IsNotExist(err) {
 				ws.Status = StatusMissing
@@ -352,6 +355,7 @@ func healState(state State) State {
 			if rebooted && !wt.Leased {
 				wt.Leased = true
 				wt.LeaseHolder = orphanedByRestartHolder
+				wt.LeaseSource = leaseSourceRestart
 				wt.LeasedAt = time.Now()
 			}
 		}
@@ -399,6 +403,7 @@ func reserveOwner(wt *WorktreeEntry) error {
 // clearLease removes any durable lease from a worktree entry.
 func clearLease(wt *WorktreeEntry) {
 	wt.Leased = false
+	wt.LeaseSource = ""
 	wt.LeaseHolder = ""
 	wt.LeasedAt = time.Time{}
 }

@@ -20,6 +20,7 @@ var (
 	pruneAll     bool
 	pruneGlobal  bool
 	pruneOrphans bool
+	pruneMissing bool
 	pruneVerbose bool
 	pruneJSON    bool
 )
@@ -37,12 +38,22 @@ Prune is a dry run by default. Pass --yes to delete the listed candidates.
 Backing-repository-missing orphans are reported by default. Pass --prune-orphans
 to include them as unverified candidates, and combine it with --yes to delete
 them.
+
+Pass --missing to clean only missing checkout registrations in the current pool.
+It preserves each registered HEAD under refs/awt/recovered/ before removing its
+registration and pool entry. Recovery holds can be cleared, but explicit leases,
+Git locks and paths that still exist are protected. Add --yes to apply cleanup.
+This mode does not run hooks and cannot be combined with --all or --prune-orphans.
+
 Pass --all or --global to sweep every managed pool under the user-level
 awt root from any directory. Global prune derives each worktree's owning
 repository from git metadata and requires the configured root to be unset or
 absolute.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if pruneMissing && (pruneAll || pruneGlobal || pruneOrphans) {
+			return fmt.Errorf("--missing cannot be combined with --all, --global or --prune-orphans")
+		}
 		if pruneAll || pruneGlobal {
 			cfg, err := config.LoadGlobal()
 			if err != nil {
@@ -74,7 +85,7 @@ absolute.`,
 			return nil
 		}
 
-		repoRoot, err := git.FindRepoRoot()
+		repoRoot, err := git.FindMainRepoRootFrom(".")
 		if err != nil {
 			return fmt.Errorf("not in a git repository: %w", err)
 		}
@@ -87,6 +98,18 @@ absolute.`,
 		poolDir, err := config.ResolvePoolDir(repoRoot, cfg.Root)
 		if err != nil {
 			return err
+		}
+
+		if pruneMissing {
+			result, err := pool.PruneMissing(repoRoot, poolDir, !pruneYes)
+			if err != nil {
+				return err
+			}
+			if pruneJSON {
+				return writeJSON(os.Stdout, pruneResultToJSON(result, !pruneYes))
+			}
+			printPruneMissingResult(os.Stdout, result, !pruneYes, pruneVerbose)
+			return nil
 		}
 
 		result, err := pool.PruneWithOptions(repoRoot, poolDir, pool.PruneOptions{
@@ -112,9 +135,27 @@ func init() {
 	pruneCmd.Flags().BoolVar(&pruneAll, "all", false, "Sweep every managed pool under the user-level awt root")
 	pruneCmd.Flags().BoolVar(&pruneGlobal, "global", false, "Alias for --all")
 	pruneCmd.Flags().BoolVar(&pruneOrphans, "prune-orphans", false, "Include backing-repository-missing orphaned worktrees in prune candidates")
+	pruneCmd.Flags().BoolVar(&pruneMissing, "missing", false, "Clean only missing checkout registrations in this pool, preserving their HEAD commits")
 	pruneCmd.Flags().BoolVarP(&pruneVerbose, "verbose", "v", false, "Show detailed skip diagnostics")
 	pruneCmd.Flags().BoolVar(&pruneJSON, "json", false, "Emit machine-readable JSON to stdout")
 	rootCmd.AddCommand(pruneCmd)
+}
+
+func printPruneMissingResult(w io.Writer, result pool.PruneResult, dryRun, verbose bool) {
+	worktrees := result.Pruned
+	if dryRun {
+		worktrees = result.Candidates
+		fmt.Fprintf(w, "🌳 Dry run: would clean %d missing %s. No checkout files will be deleted.\n", len(worktrees), plural("record", len(worktrees)))
+	} else {
+		fmt.Fprintf(w, "🌳 Cleaned %d missing %s. No checkout files were deleted.\n", len(worktrees), plural("record", len(worktrees)))
+	}
+	for _, wt := range worktrees {
+		fmt.Fprintf(w, "  %s  %s\n    %s\n", wt.Name, ui.PrettyPath(wt.Path), wt.Warning)
+	}
+	printPruneSkipped(w, result.Skipped, verbose)
+	if dryRun && len(worktrees) > 0 {
+		fmt.Fprintln(w, "🌳 Re-run with 'awt prune --missing --yes' to apply this cleanup.")
+	}
 }
 
 func printPruneResult(w io.Writer, result pool.PruneResult, dryRun bool, pruneOrphans bool, verbose bool) {
