@@ -102,7 +102,7 @@ func runDestroy(t *testing.T, args ...string) (jsonDestroyResult, error) {
 }
 
 func TestDestroyExplicitPath(t *testing.T) {
-	for _, form := range []string{"absolute", "relative", "current", "existing-bare-path"} {
+	for _, form := range []string{"absolute", "relative", "current", "existing-bare-path", "symlink-alias"} {
 		t.Run(form, func(t *testing.T) {
 			repo, _, target, _ := newDestroyPool(t, "")
 			arg := target
@@ -122,6 +122,11 @@ func TestDestroyExplicitPath(t *testing.T) {
 			case "existing-bare-path":
 				t.Chdir(filepath.Dir(target))
 				arg = filepath.Base(target)
+			case "symlink-alias":
+				arg = filepath.Join(t.TempDir(), "alias")
+				if err := os.Symlink(target, arg); err != nil {
+					t.Fatal(err)
+				}
 			}
 			result, err := runDestroy(t, arg)
 			if err != nil {

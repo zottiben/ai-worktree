@@ -316,7 +316,11 @@ func FindByPath(poolDir, path string) (*WorktreeEntry, error) {
 		return nil, err
 	}
 	for _, wt := range state.Worktrees {
-		if wt.Path == path {
+		same, err := samePath(wt.Path, path)
+		if err != nil {
+			return nil, err
+		}
+		if same {
 			return &wt, nil
 		}
 	}

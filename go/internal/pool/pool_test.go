@@ -150,6 +150,46 @@ func TestReleaseClearsLease(t *testing.T) {
 	}
 }
 
+func TestFindByPathMatchesAliases(t *testing.T) {
+	repo := newTestRepo(t)
+	poolDir := newPoolDir(t)
+	wt, err := AcquireLease(repo, poolDir, 2, nil, "keep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(wt, alias); err != nil {
+		t.Fatal(err)
+	}
+	matches := []string{wt, wt + string(filepath.Separator), alias}
+	rel, err := filepath.Rel(poolDir, wt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upper := filepath.Join(filepath.Dir(poolDir), strings.ToUpper(filepath.Base(poolDir)), rel)
+	if _, err := os.Stat(upper); err == nil {
+		matches = append(matches, upper)
+	}
+	for _, path := range matches {
+		entry, err := FindByPath(poolDir, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if entry == nil || entry.Path != wt {
+			t.Fatalf("%s must find recorded entry %s, got %+v", path, wt, entry)
+		}
+	}
+	for _, path := range []string{filepath.Join(wt, "sub"), filepath.Dir(wt), repo, filepath.Join(t.TempDir(), "missing")} {
+		entry, err := FindByPath(poolDir, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if entry != nil {
+			t.Fatalf("%s must not match a managed worktree, got %+v", path, entry)
+		}
+	}
+}
+
 func TestListReportsLeasedWithHolder(t *testing.T) {
 	repo := newTestRepo(t)
 	poolDir := newPoolDir(t)

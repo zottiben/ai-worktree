@@ -67,7 +67,7 @@ exit                          # worktree is cleaned and returned to the pool
 | `awt get --lease` | Reserve a worktree without a subshell; prints its path to stdout |
 | `awt enter <n>` | Open a subshell in worktree `n`, even if it's in use |
 | `awt status` | Show the pool (add `--json` for machine-readable output) |
-| `awt return [path]` | Release, clean, and return a worktree to the pool |
+| `awt return [name-or-path]` | Release, clean, and return a worktree by name or path (default: the one you are in) to the pool |
 | `awt prune` | Remove stale idle worktrees (dry run; `--yes` to delete) |
 | `awt prune --missing` | Clean missing checkout registrations in this pool (dry run; `--yes` to apply) |
 | `awt destroy <name-or-path>` | Remove a worktree by name or path (dry run; `--yes` to delete) |

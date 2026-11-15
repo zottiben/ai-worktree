@@ -42,11 +42,15 @@ This tool's whole job is creating and tearing down git worktrees. Those operatio
 (`worktree remove --force`, hard reset, clean) can silently lose uncommitted or
 unpushed work. The implemented, tested guarantees:
 
-- **Explicit targets only.** `destroy <name|path>` acts on one named worktree;
-  bare names resolve only within the current repository's pool, using the owning
+- **Explicit targets only.** `destroy <name|path>` and `return <name|path>` act
+  on one worktree through one shared resolver (`go/cmd/target.go`); bare names
+  resolve only within the current repository's pool, using the owning
   checkout's config even inside a linked worktree. Existing relative paths and
   explicit paths never fall back to name lookup, avoiding accidental deletion of
-  a different target (covered in `go/cmd/destroy_test.go`). `destroy <pool> --all`
+  a different target. Paths match the recorded worktree by file identity, so
+  symlink aliases resolve, but never by containment; only a bare `awt return`
+  takes the worktree that contains the current directory (covered in
+  `go/cmd/destroy_test.go` and `go/cmd/return_test.go`). `destroy <pool> --all`
   acts on that pool only. There is NO cross-pool/global destroy; `--all` without
   a pool path is an error. Never act on a sibling or the primary checkout by
   inference.

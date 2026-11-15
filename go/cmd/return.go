@@ -8,29 +8,30 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/zottiben/ai-worktree/go/internal/config"
 	"github.com/zottiben/ai-worktree/go/internal/git"
 	"github.com/zottiben/ai-worktree/go/internal/pool"
 	"github.com/zottiben/ai-worktree/go/internal/ui"
 )
 
 var returnForce bool
-var errReturnWorktreeUnmanaged = errors.New("return worktree unmanaged")
 
 var returnCmd = &cobra.Command{
-	Use:   "return [path]",
+	Use:   "return [name|path]",
 	Short: "Terminate lingering processes and return a worktree",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		wtPath, err := resolveWorktreePath(args)
-		if err != nil {
-			return err
-		}
+	Long: `Release a worktree's lease or reservation, clean it, and return it to the
+pool.
 
-		poolDir, err := resolveReturnPoolDir(wtPath, len(args) > 0)
+  awt return <name>            Return a worktree in the current repo's pool.
+  awt return <worktree-path>   Return exactly one worktree by path.
+  awt return                   Return the worktree that contains the current
+                               directory ($AWT_DIR inside an awt subshell).
+
+Names are those shown by 'awt status', e.g. 'awt return 3'. Existing relative
+paths are treated as paths, not names; use ./path to explicitly name a path.`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		poolDir, wtPath, err := resolveReturnTarget(args)
 		if err != nil {
-			if errors.Is(err, errReturnWorktreeUnmanaged) {
-				return fmt.Errorf("worktree %s is not managed by awt", wtPath)
-			}
 			return err
 		}
 
@@ -65,55 +66,32 @@ func init() {
 	rootCmd.AddCommand(returnCmd)
 }
 
-func resolveWorktreePath(args []string) (string, error) {
+func resolveReturnTarget(args []string) (string, string, error) {
 	if len(args) > 0 {
-		return filepath.Abs(args[0])
+		return resolveWorktreeTarget(args[0])
 	}
 	if env := os.Getenv("AWT_DIR"); env != "" {
-		return filepath.Abs(env)
-	}
-	return os.Getwd()
-}
-
-func resolveReturnPoolDir(wtPath string, explicitPath bool) (string, error) {
-	pathPoolDir := filepath.Dir(filepath.Dir(wtPath))
-	entry, err := pool.FindByPath(pathPoolDir, wtPath)
-	if err != nil {
-		return "", err
-	}
-	if entry != nil {
-		return pathPoolDir, nil
-	}
-
-	var repoRoot string
-	if explicitPath {
-		repoRoot, err = git.FindMainRepoRootFrom(wtPath)
-	} else {
-		repoRoot, err = git.FindRepoRoot()
-	}
-	if err != nil {
-		if explicitPath {
-			return "", errReturnWorktreeUnmanaged
+		path, err := filepath.Abs(env)
+		if err != nil {
+			return "", "", err
 		}
-		return "", fmt.Errorf("not in a git repository: %w", err)
+		poolDir, wtPath, err := resolveManagedWorktree(path)
+		if errors.Is(err, errWorktreeUnmanaged) {
+			return "", "", fmt.Errorf("AWT_DIR worktree %s is not managed by awt", path)
+		}
+		return poolDir, wtPath, err
 	}
-
-	cfg, err := config.Load(repoRoot)
+	cwd, err := os.Getwd()
 	if err != nil {
-		return "", fmt.Errorf("failed to load config: %w", err)
+		return "", "", err
 	}
-
-	fallbackPoolDir, err := config.ResolvePoolDir(repoRoot, cfg.Root)
+	root, err := git.FindRepoRootFrom(cwd)
 	if err != nil {
-		return "", err
+		return "", "", fmt.Errorf("not in a git repository: %w", err)
 	}
-
-	entry, err = pool.FindByPath(fallbackPoolDir, wtPath)
-	if err != nil {
-		return "", err
+	poolDir, wtPath, err := resolveManagedWorktree(root)
+	if errors.Is(err, errWorktreeUnmanaged) {
+		return "", "", fmt.Errorf("%s is not inside a worktree managed by awt; pass a worktree name from 'awt status'", cwd)
 	}
-	if entry == nil {
-		return "", errReturnWorktreeUnmanaged
-	}
-	return fallbackPoolDir, nil
+	return poolDir, wtPath, err
 }

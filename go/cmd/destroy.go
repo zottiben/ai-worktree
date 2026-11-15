@@ -114,7 +114,7 @@ func destroyRunE(cmd *cobra.Command, args []string) error {
 		return errors.New("specify a worktree name or path to destroy, or a pool path with --all")
 	}
 
-	poolDir, wtPath, err := resolveDestroyWorktree(args[0])
+	poolDir, wtPath, err := resolveWorktreeTarget(args[0])
 	if err != nil {
 		return err
 	}
@@ -141,74 +141,6 @@ func destroyPreDestroyHooks() ([]string, error) {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 	return cfg.Hooks.PreDestroy, nil
-}
-
-// resolveDestroyWorktree accepts a worktree name or an exact worktree path. Only a
-// bare, nonexistent path can be a name: a typo in an explicit path or an existing
-// local directory must never silently select a different worktree by name.
-func resolveDestroyWorktree(target string) (string, string, error) {
-	wtPath, err := filepath.Abs(target)
-	if err != nil {
-		return "", "", err
-	}
-	if target != "." && target != ".." && filepath.Base(target) == target && filepath.VolumeName(target) == "" {
-		if _, err := os.Lstat(wtPath); os.IsNotExist(err) {
-			return resolveDestroyWorktreeByName(target)
-		} else if err != nil {
-			return "", "", err
-		}
-	}
-	poolDir, err := resolveDestroyPoolFromWorktree(wtPath)
-	return poolDir, wtPath, err
-}
-
-func resolveDestroyWorktreeByName(name string) (string, string, error) {
-	// Resolve through the owning checkout: relative config roots and the pool
-	// hash of a local-only repository must not change inside a linked worktree.
-	repoRoot, err := git.FindMainRepoRootFrom(".")
-	if err != nil {
-		return "", "", fmt.Errorf("cannot resolve worktree name %q outside a git repository; specify a worktree path", name)
-	}
-	cfg, err := config.Load(repoRoot)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to load config: %w", err)
-	}
-	poolDir, err := config.ResolvePoolDir(repoRoot, cfg.Root)
-	if err != nil {
-		return "", "", err
-	}
-	state, err := pool.ReadState(poolDir)
-	if err != nil {
-		return "", "", err
-	}
-	var wtPath string
-	for _, wt := range state.Worktrees {
-		if wt.Name != name {
-			continue
-		}
-		if wtPath != "" {
-			return "", "", fmt.Errorf("more than one worktree named %q in pool %s; specify the exact worktree path", name, poolDir)
-		}
-		wtPath = wt.Path
-	}
-	if wtPath == "" {
-		return "", "", fmt.Errorf("no worktree named %q in pool %s; run 'awt status' for details", name, poolDir)
-	}
-	return poolDir, wtPath, nil
-}
-
-// resolveDestroyPoolFromWorktree resolves the managed pool that owns a single
-// named worktree, ascending to the pool directory or falling back to the
-// repository-configured pool.
-func resolveDestroyPoolFromWorktree(wtPath string) (string, error) {
-	poolDir, err := resolveReturnPoolDir(wtPath, true)
-	if err != nil {
-		if errors.Is(err, errReturnWorktreeUnmanaged) {
-			return "", fmt.Errorf("worktree %s is not managed by awt", wtPath)
-		}
-		return "", err
-	}
-	return poolDir, nil
 }
 
 // resolveDestroyPoolFromTarget resolves the pool named by a --all target. The
