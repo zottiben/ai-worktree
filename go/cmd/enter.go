@@ -42,7 +42,7 @@ func init() {
 func enterRunE(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	repoRoot, err := git.FindRepoRoot()
+	repoRoot, err := git.FindMainRepoRootFrom(".")
 	if err != nil {
 		return fmt.Errorf("not in a git repository: %w", err)
 	}

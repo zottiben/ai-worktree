@@ -91,3 +91,12 @@ unpushed work. The implemented, tested guarantees:
 These are backed by tests in `go/internal/pool/` (`destroy_test.go`,
 `prune_test.go`, `state_test.go`, `pool_test.go`). Any change to removal/lease
 semantics MUST keep those green and add a case for the new behavior.
+
+### 3. One repository, one pool
+Every command that reads or changes a pool resolves the repository through the
+owning checkout (`git.FindMainRepoRootFrom`), never a linked worktree's own root.
+Without a remote the pool name hashes the repository path, and a relative `root`
+in `awt.toml` resolves from the repository root, so a linked worktree's root names
+a different pool and awt loses track of worktrees it manages. Covered by
+`go/cmd/enter_test.go`, the `get-linked` case in `go/cmd/worktree_registry_test.go`
+and `TestDestroyByName` in `go/cmd/destroy_test.go`.

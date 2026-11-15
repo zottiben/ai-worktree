@@ -103,6 +103,9 @@ func TestWorktreeRegistryCLI(t *testing.T) {
 			if path == first || path == second {
 				t.Fatalf("must not reuse a leased or registered missing path: %s", path)
 			}
+			if filepath.Dir(filepath.Dir(path)) != poolDir {
+				t.Fatalf("get must acquire from the repository pool %s, got %s", poolDir, path)
+			}
 			if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
 				t.Fatal(err)
 			}
